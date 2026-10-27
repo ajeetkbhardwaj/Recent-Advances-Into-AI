@@ -1,0 +1,4 @@
+warehouse,profit_per_unit,capacity,mu_demand,sigma_demand,holding_cost
+A,5,6000,4200,700,0.5
+B,4,4000,3100,500,0.5
+C,3,4000,2700,400,0.5

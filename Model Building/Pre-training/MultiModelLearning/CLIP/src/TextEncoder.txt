@@ -1,0 +1,110 @@
+import torch
+import torch.nn as nn
+
+class TextEncoder(nn.Module):
+    def __init__(self, vocab_size, trans_width, trans_heads, trans_layers, context_length, embed_dim):
+       super().init()
+       # Step-1 : Input Embedding Transformation
+       # 1. X_token = E[T] -> [B, S, W], initial token  vector sequence by indexing embedding matrix E with input T
+       self.token_embedding = nn.Embedding(vocab_size, trans_width)
+       # 2. addition of postional information by X_0 = X_token + P[0: S, :] -> [B, S, W]
+       self.positional_embedding = nn.Parameter(torch.zeros(context_length, trans_width))
+
+       # Step - 2. Iterative Processing via Transformer's Encoder
+       # 2.1 Multi-head self-attention
+       # 2.2 Add and Norm (Residual Connection)
+       # 2.3 Position-wise FNN
+       # 2.4 Add and Norm (2nd Residual Connection)
+       # 2.5 return sequence of contextual vector 
+       """
+       For i in [1...n_l] repeat input to the layer i is X{i-1} from step 1 X_0
+           for h in [1...n_h] repeat to create Q, K and V vectors by projecting X{i-1} with learned matrices W{}
+               Q_h = X{i -1} * W{q, h} 
+               K_h = X{i -1} * W{k, h}
+               V_h = X{i -1} * W{v, h}
+               Attention_h = softmax((Q_h * W_h^T) / sqrt(W/H)) * V_h : Attention score for each heads
+            concatenate the output from each attention head and project back to the model dimentions W 
+            MHSA_out = Concat(Attention_1, ..., Attension_nh) * W_o
+            X'_i = LayerNorm(X_{i-1} + MHSA_out) : addtion of residual connection and normalization
+            FFN_out = ReLU(X'_i * W_1 + b_1) * W_2 + b_2
+            X_i = LayerNorm(X'_i + FFN_out) : addtion of 2nd residual connection and normalization
+        X_L = [X_1, ..., X_n]
+
+        return X_L ->  [B, S, W]
+
+
+       """
+       self.trans_encoder = nn.TransformerEncoder(
+           nn.TransformerEncoderLayer(d_model=trans_width, nhead=trans_heads),
+           num_layers=trans_layers
+       )
+       # Step-3. Pooling/Feature extraction - Convert X_L into a single vector per sequence by
+       # 1. find EOT(i_eot) token for sequence in batch
+       # 2. select the corres vector from X_L by X_pooled = X_L[range(B), i_eot] -> [B, W]
+
+       # step-4. final projection -> from dim W to target embedding dim D.
+       # Affine transformation : Z = X_pooled * W_proj^T + b_proj
+       self.ln_final = nn.LayerNorm(trans_width)
+       self.text_projection = nn.Linear(trans_width, embed_dim)
+       self.initialize_parameters()
+
+    
+
+    def initialize_parameters(self):
+        nn.init.normal_(self.token_embedding.weight, std=0.02)
+        nn.init.normal_(self.positional_embedding, std=0.02)
+        nn.init.normal_(self.text_projection.weight, std=0.02)
+    
+    def forward(self, text):
+        # 1.0
+        x = self.token_embedding(text)
+        # 1.2 
+        x = x + self.positional_embedding[:x.size(1), :]
+        # 2.0
+        x = x.permute(1, 0, 2)  # [seq_len, batch_size, transformer_width]
+        x = self.trans_encoder(x)
+        x = x.permute(1, 0, 2)  # [batch_size, seq_len, transformer_width]
+
+        eot_token_idx = (text != 0).int().cumsum(dim=1).argmax(dim=1)
+        x = x[torch.arange(x.size(0)), eot_token_idx, :]
+
+        x = self.ln_final(x)
+        x = self.text_projection(x)
+        
+        return x
+
+
+if __name__ == "__main__":
+    # Define model parameters for testing
+    vocab_size = 49408  # Example vocab size from CLIP
+    trans_width = 512
+    trans_heads = 8
+    trans_layers = 12
+    context_length = 77
+    embed_dim = 512
+    
+    # Instantiate the model
+    model = TextEncoder(
+        vocab_size=vocab_size,
+        trans_width=trans_width,
+        trans_heads=trans_heads,
+        trans_layers=trans_layers,
+        context_length=context_length,
+        embed_dim=embed_dim
+    )
+    
+    # Create a dummy input tensor
+    batch_size = 4
+    dummy_text = torch.randint(0, vocab_size, (batch_size, context_length), dtype=torch.long)
+
+    # Perform a forward pass
+    output = TextEncoder(dummy_text)
+    
+    # Print the output shape to verify
+    print("TextEncoder instantiated successfully.")
+    print(f"Input shape: {dummy_text.shape}")
+    print(f"Output shape: {output.shape}")
+    
+    # Expected output shape: [batch_size, embed_dim]
+    assert output.shape == (batch_size, embed_dim)
+    print("Output shape is correct.")

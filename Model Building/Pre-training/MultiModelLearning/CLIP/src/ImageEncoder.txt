@@ -1,0 +1,54 @@
+import torch
+import torch.nn as nn
+
+class ImageEncoder(nn.Module):
+    def __init__(self, input_res, patch_size, width, layers, heads, output_dim):
+        super().__init__()
+        self.input_res = input_res
+        self.output_dim = output_dim
+ 
+        # 
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=width, kernel_size=patch_size, stride=patch_size, bias=False)
+        self.num_patches = (input_res // patch_size) ** 2
+
+        # positional embedding
+        self.positional_embedding = nn.Parameter(torch.zeros(1, self.num_patches + 1, width))
+        # class embedding
+        self.class_embedding = nn.Parameter(torch.zeros(1, 1, width))
+
+        self.trans_encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model=width, nhead=heads),
+            num_layers=layers
+        )
+        self.fc = nn.Linear(width, output_dim)
+
+        self.initialize_parameters()
+
+    def initialize_parameters(self):
+        nn.init.normal_(self.positional_embedding, std=0.02)
+        nn.init.normal_(self.class_embedding, std=0.02)
+        nn.init.normal_(self.fc.weight, std=0.02)
+
+    def forward(self, x: torch.Tensor):
+        x = self.conv1(x)
+        x = x.flatten(2)
+        x = x.transpose(1, 2)
+
+        # class embedding
+        class_embeddings = self.class_embedding.expand(x.shape[0], -1, -1)
+        x = torch.cat([class_embeddings, x], dim=1)
+
+        # positional embedding
+        x = x + self.positional_embedding
+
+        # transformer
+        x = self.trans_encoder(x.permute(1, 0, 2))
+        x = x.permute(1, 0, 2)
+
+        # final projection
+        x = self.fc(x[:, 0])
+
+        return x
+
+if __name__ == "__main__":
+    pass

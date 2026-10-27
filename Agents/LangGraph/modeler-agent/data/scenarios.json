@@ -1,0 +1,10 @@
+[
+  {
+    "question": "Allocate 10000 units across A/B/C to maximize profit (5,4,3) with capacities A<=6000 B<=4000, ensure 95% service",
+    "expected": "stochastic LP with chance constraint"
+  },
+  {
+    "question": "We have 8000 units, demand A~N(4000,600) B~N(3000,500) C~N(2500,400). Minimize stockout cost.",
+    "expected": "expected cost minimization + Monte Carlo validation"
+  }
+]
